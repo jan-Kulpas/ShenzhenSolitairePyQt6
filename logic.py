@@ -36,6 +36,7 @@ class Rank(Enum):
 class Card(QGraphicsPixmapItem):
     class Signals(QObject):
         dropped = pyqtSignal()
+        doubleclicked = pyqtSignal()
 
     def __init__(self, rank: Rank, suit: Suit) -> None:
         super().__init__()
@@ -107,6 +108,11 @@ class Card(QGraphicsPixmapItem):
 
         self.signals.dropped.emit()
         self.resetPosition()
+
+    def mouseDoubleClickEvent(self, e) -> None:
+        super().mouseDoubleClickEvent(e)
+        self.signals.doubleclicked.emit()
+        self.stack.setZValue(0)
 
     def __str__(self) -> str:
         s = self.suit.name.title() if self.suit != Suit.NONE else "Flower"
@@ -298,8 +304,13 @@ class Button(QGraphicsPixmapItem):
 
 
 class Board(QObject):
+    class Signals(QObject):
+        win = pyqtSignal()
+
     def __init__(self, scene: QGraphicsScene) -> None:
         super().__init__()
+        self.signals = Board.Signals()
+
         self.scene = scene
 
         self.temp_cells: List[TempCell] = []
@@ -344,6 +355,9 @@ class Board(QObject):
             self.scene.addItem(card)
             card.signals.dropped.connect(self.check_buttons)
             card.signals.dropped.connect(self.check_win)
+            card.signals.doubleclicked.connect(
+                lambda card=card: self.auto_drop(card)
+            )
 
     def deal(self) -> None:
         random.shuffle(self.deck)
@@ -356,6 +370,15 @@ class Board(QObject):
         #deal extra cards to leftmost stacks
         for i in range(len(self.deck)%len(self.work_stacks)):
             self.work_stacks[i].add_card(self.deck[-(i+1)])
+    
+    def auto_drop(self, card: Card):
+        for stack in [*self.foundation, self.flower_cell]:
+            if stack.can_accept(card):
+                card.stack.setZValue(0)
+                card.stack.remove_card(card)
+                stack.add_card(card)
+                card.resetPosition()
+
 
     def check_buttons(self) -> None:
         for button in self.buttons:
@@ -404,5 +427,5 @@ class Board(QObject):
                 return
         if not self.flower_cell.card:
             return
-        print("YOU WON")
+        self.signals.win.emit()
         
